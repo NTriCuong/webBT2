@@ -1,0 +1,298 @@
+<!doctype html>
+<html lang="vi">
+    <head>
+        <meta charset="UTF-8" />
+        <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+        <title>Video Call Agora - Nhóm 9</title>
+        <style>
+            :root {
+                color-scheme: light;
+                --bg: #0f172a;
+                --panel: #111827;
+                --card: #1f2937;
+                --text: #e2e8f0;
+                --muted: #94a3b8;
+                --primary: #38bdf8;
+                --danger: #ef4444;
+                --success: #22c55e;
+                --border: #334155;
+            }
+
+            * { box-sizing: border-box; }
+
+            body {
+                margin: 0;
+                font-family: "Segoe UI", Tahoma, Geneva, Verdana, sans-serif;
+                background: var(--bg);
+                color: var(--text);
+            }
+
+            .page {
+                min-height: 100vh;
+                display: grid;
+                grid-template-columns: 320px 1fr;
+            }
+
+            aside {
+                background: var(--panel);
+                padding: 24px;
+                border-right: 1px solid var(--border);
+                display: flex;
+                flex-direction: column;
+                gap: 20px;
+            }
+
+            h1 { margin: 0; font-size: 22px; }
+
+            .room-pill {
+                display: inline-flex;
+                align-items: center;
+                gap: 8px;
+                padding: 6px 12px;
+                border-radius: 999px;
+                background: rgba(56, 189, 248, 0.15);
+                color: var(--primary);
+                font-weight: 600;
+                font-size: 13px;
+                width: fit-content;
+            }
+
+            .control-group { display: grid; gap: 10px; }
+            .control-group label { font-size: 13px; color: var(--muted); }
+            .control-group input {
+                padding: 10px 12px;
+                border-radius: 12px;
+                border: 1px solid var(--border);
+                background: #0b1220;
+                color: var(--text);
+                outline: none;
+            }
+
+            .buttons { display: flex; flex-wrap: wrap; gap: 10px; }
+            .btn {
+                padding: 10px 14px;
+                border-radius: 12px;
+                border: none;
+                font-weight: 600;
+                cursor: pointer;
+                transition: opacity 0.2s;
+            }
+            .btn:disabled { opacity: 0.5; cursor: not-allowed; }
+            .btn.primary { background: var(--primary); color: #0f172a; }
+            .btn.secondary { background: #e2e8f0; color: #0f172a; }
+            .btn.danger { background: var(--danger); color: #fff; }
+            .btn.success { background: var(--success); color: #0f172a; }
+
+            .status { font-size: 13px; color: var(--muted); line-height: 1.4; }
+
+            main { padding: 24px; display: flex; flex-direction: column; gap: 16px; }
+
+            /* Grid hiển thị video */
+            #video-grid {
+                flex: 1;
+                display: grid;
+                grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
+                gap: 15px;
+                background: #0b1220;
+                border-radius: 20px;
+                padding: 15px;
+                overflow-y: auto;
+            }
+
+            .video-container {
+                width: 100%;
+                height: 100%;
+                background: #1f2937;
+                border-radius: 12px;
+                overflow: hidden;
+                position: relative;
+                border: 1px solid var(--border);
+            }
+
+            .video-label {
+                position: absolute;
+                bottom: 10px;
+                left: 10px;
+                background: rgba(0,0,0,0.5);
+                padding: 2px 8px;
+                border-radius: 4px;
+                font-size: 12px;
+                z-index: 10;
+            }
+
+            @media (max-width: 900px) {
+                .page { grid-template-columns: 1fr; }
+                aside { border-right: none; border-bottom: 1px solid var(--border); }
+            }
+        </style>
+    </head>
+    <body>
+        <div class="page">
+            <aside>
+                <div>
+                    <h1>Video Call Nhóm 9</h1>
+                </div>
+
+                <div class="control-group">
+                    <label>Tên hiển thị</label>
+                    <input id="displayName" type="text" placeholder="Nhập tên của bạn" />
+                </div>
+
+                <div class="buttons">
+                    <button id="joinBtn" class="btn success">Tham gia</button>
+                    <button id="leaveBtn" class="btn danger" disabled>Rời khỏi</button>
+                    <button id="toggleMic" class="btn secondary" disabled>Tắt mic</button>
+                    <button id="toggleCam" class="btn secondary" disabled>Tắt cam</button>
+                </div>
+
+                <div id="status" class="status">Sẵn sàng kết nối với Agora.</div>
+            </aside>
+
+            <main>
+                <div id="video-grid">
+                    </div>
+            </main>
+        </div>
+
+        <script src="https://download.agora.io/sdk/release/AgoraRTC_N-4.20.0.js"></script>
+        
+        <script>
+            /** THÔNG TIN CẤU HÌNH **/
+            const APP_ID = "fc86d94c65e1425280b735021fb63e5a";
+            // LƯU Ý: Nếu project bật App Certificate, bạn phải điền Token vào đây.
+            // Nếu dùng "Testing Mode" trên Console thì để null.
+            const TOKEN = "007eJxTYFh2Yn6Qg7Of73EHvw+G5b4lPlysK/Y1BB9a0Nz0VdfHv1WBIS3ZwizF0iTZzDTV0MTI1MjCIMnc2NTAyDAtycw41TRRL7YlsyGQkSFz1VQGRigE8TkZ8jLycy1LMkpNGRgAaDofTA=="; 
+
+            const client = AgoraRTC.createClient({ mode: "rtc", codec: "vp8" });
+
+            let localTracks = {
+                videoTrack: null,
+                audioTrack: null
+            };
+            let remoteUsers = {};
+
+            // Elements
+            const statusEl = document.getElementById("status");
+            const joinBtn = document.getElementById("joinBtn");
+            const leaveBtn = document.getElementById("leaveBtn");
+            const toggleMic = document.getElementById("toggleMic");
+            const toggleCam = document.getElementById("toggleCam");
+            const videoGrid = document.getElementById("video-grid");
+
+            const setStatus = (msg) => { statusEl.textContent = msg; };
+
+            // Hàm xử lý khi có người khác join
+            client.on("user-published", async (user, mediaType) => {
+                await client.subscribe(user, mediaType);
+                if (mediaType === "video") {
+                    createVideoContainer(user.uid, `User: ${user.uid}`);
+                    user.videoTrack.play(`video-${user.uid}`);
+                }
+                if (mediaType === "audio") {
+                    user.audioTrack.play();
+                }
+                setStatus(`Người dùng ${user.uid} đã tham gia.`);
+            });
+
+            client.on("user-unpublished", (user) => {
+                const el = document.getElementById(`container-${user.uid}`);
+                if (el) el.remove();
+            });
+
+            function createVideoContainer(uid, labelText) {
+                if (document.getElementById(`container-${uid}`)) return;
+                
+                const container = document.createElement("div");
+                container.id = `container-${uid}`;
+                container.className = "video-container";
+                
+                const videoDiv = document.createElement("div");
+                videoDiv.id = `video-${uid}`;
+                videoDiv.style.width = "100%";
+                videoDiv.style.height = "100%";
+
+                const label = document.createElement("div");
+                label.className = "video-label";
+                label.innerText = labelText;
+
+                container.appendChild(videoDiv);
+                container.appendChild(label);
+                videoGrid.appendChild(container);
+            }
+
+            joinBtn.onclick = async () => {
+                const channel = "nhom9thu5";
+                const name = document.getElementById("displayName").value || "Khách";
+
+                try {
+                    setStatus("Đang kết nối Agora...");
+                    
+                    // 1. Join channel
+                    await client.join(APP_ID, channel, TOKEN, null);
+                    
+                    // 2. Tạo track local (Cam & Mic)
+                    [localTracks.audioTrack, localTracks.videoTrack] = await AgoraRTC.createMicrophoneAndCameraTracks();
+                    
+                    // 3. Hiển thị video của mình
+                    createVideoContainer("local", `${name} (Bạn)`);
+                    localTracks.videoTrack.play("video-local");
+
+                    // 4. Publish lên server
+                    await client.publish(Object.values(localTracks));
+
+                    setStatus("Đã tham gia phòng thành công.");
+                    joinBtn.disabled = true;
+                    leaveBtn.disabled = false;
+                    toggleMic.disabled = false;
+                    toggleCam.disabled = false;
+
+                } catch (error) {
+                    console.error(error);
+                    setStatus("Lỗi: " + error.message);
+                }
+            };
+
+            leaveBtn.onclick = async () => {
+                for (let trackName in localTracks) {
+                    let track = localTracks[trackName];
+                    if (track) {
+                        track.stop();
+                        track.close();
+                        localTracks[trackName] = null;
+                    }
+                }
+                await client.leave();
+                videoGrid.innerHTML = "";
+                joinBtn.disabled = false;
+                leaveBtn.disabled = true;
+                toggleMic.disabled = true;
+                toggleCam.disabled = true;
+                setStatus("Đã rời phòng.");
+            };
+
+            toggleMic.onclick = async () => {
+                if (localTracks.audioTrack.muted) {
+                    await localTracks.audioTrack.setMuted(false);
+                    toggleMic.innerText = "Tắt mic";
+                    toggleMic.classList.replace("primary", "secondary");
+                } else {
+                    await localTracks.audioTrack.setMuted(true);
+                    toggleMic.innerText = "Bật mic";
+                    toggleMic.classList.replace("secondary", "primary");
+                }
+            };
+
+            toggleCam.onclick = async () => {
+                if (localTracks.videoTrack.muted) {
+                    await localTracks.videoTrack.setMuted(false);
+                    toggleCam.innerText = "Tắt cam";
+                    toggleCam.classList.replace("primary", "secondary");
+                } else {
+                    await localTracks.videoTrack.setMuted(true);
+                    toggleCam.innerText = "Bật cam";
+                    toggleCam.classList.replace("secondary", "primary");
+                }
+            };
+        </script>
+    </body>
+</html>
