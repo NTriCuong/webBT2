@@ -185,7 +185,7 @@
             client.on("user-published", async (user, mediaType) => {
                 await client.subscribe(user, mediaType);
                 if (mediaType === "video") {
-                    createVideoContainer(user.uid, `User: ${user.uid}`);
+                    createVideoContainer(user.uid, `${user.name}`);
                     user.videoTrack.play(`video-${user.uid}`);
                 }
                 if (mediaType === "audio") {
